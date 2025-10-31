@@ -91,6 +91,7 @@ const buildAssigmentsSelectSql = (id, variant) => {
     "AssignmentStatus",
     'CONCAT(UserFirstName," ",UserMiddleName," ",UserLastName) AS AssignmentUserName',
     "Jobs.JobTitle AS AssignmentJobTitle",
+    "Jobs.JobDescription AS AssignmentJobDescription",
   ];
 
   switch (variant) {
