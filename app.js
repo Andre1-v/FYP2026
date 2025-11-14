@@ -9,9 +9,9 @@ const app = new express();
 // Configure middleware ------------------------------
 
 app.use(function (req, res, next) {
-  res.header("Acess-Control-Allow-Origin", "*");
+  res.header("Access-Control-Allow-Origin", "*");
   res.header(
-    "Acess-Control-Allow-Headers",
+    "Access-Control-Allow-Headers",
     "Origin, X-Requested-With, Content-Type, Accept"
   );
   next();
@@ -19,7 +19,36 @@ app.use(function (req, res, next) {
 
 app.use(cors({ origin: "*" }));
 
+app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
+
 // Controllers ---------------------------------------
+const createTickets = async (sql, record) => {
+  try {
+    const status = await database.query(sql, record);
+
+    const recoverRecordSql = buildTicketSelectSql(status[0].insertId, null);
+    const { isSuccess, result, message } = await read(recoverRecordSql);
+
+    return isSuccess
+      ? {
+          isSuccess: true,
+          result: result,
+          message: "Record successfully recovered ",
+        }
+      : {
+          isSuccess: false,
+          result: null,
+          message: `Failed to recover the inserted record: ${message}`,
+        };
+  } catch (error) {
+    return {
+      isSuccess: false,
+      result: null,
+      message: `Failed to execude query: ${error.message}`,
+    };
+  }
+};
 
 const read = async (selectSql) => {
   try {
@@ -79,6 +108,64 @@ const buildUsersSelectSql = (id, variant) => {
   return sql;
 };
 
+const buildsSetFields = (fields) =>
+  fields.reduce(
+    (setSQL, field, index) =>
+      setSQL + `${field}=:${field}` + (index < fields.length - 1 ? ", " : " "),
+    " SET "
+  );
+
+const buildTicketInsertSql = (record) => {
+  const table = `
+    Tickets
+  `;
+  const mutablefields = [
+    "TicketID",
+    "TicketTitle",
+    "TicketDescription",
+    "OfficeLocationID",
+    "RequestedByUserID",
+    "CreatedAt",
+  ];
+  return `INSERT INTO ${table}` + buildsSetFields(mutablefields);
+};
+const buildTicketSelectSql = (id, variant) => {
+  let sql = "";
+
+  const table = `
+    Tickets
+    LEFT JOIN Users ON Tickets.RequestedByUserID = Users.UserID
+    LEFT JOIN Offices ON Tickets.OfficeLocationID = Offices.OfficeID
+  `;
+
+  const fields = [
+    "TicketID",
+    "TicketTitle",
+    "TicketDescription",
+    "OfficeLocationID",
+    "RequestedByUserID",
+    `CONCAT(Users.UserFirstName, " ", Users.UserMiddleName, " ", Users.UserLastName)
+      AS RequestedByUserName`,
+    "Offices.OfficeName AS TicketOfficeName",
+    "Offices.AddressLine1 AS TicketOfficeAddress1",
+    "Offices.AddressLine2 AS TicketOfficeAddress2",
+    "Offices.City AS TicketOfficeCity",
+    "Offices.County AS TicketOfficeCounty",
+    "Offices.Postcode AS TicketOfficePostcode",
+    "CreatedAt",
+  ];
+
+  switch (variant) {
+    case "user":
+      sql = `SELECT ${fields} FROM ${table} WHERE RequestedByUserID = ${id}`;
+      break;
+    default:
+      sql = `SELECT ${fields} FROM ${table}`;
+      if (id) sql += ` WHERE TicketID = ${id}`;
+  }
+  return sql;
+};
+
 const buildAssigmentsSelectSql = (id, variant) => {
   let sql = "";
   let table =
@@ -105,6 +192,29 @@ const buildAssigmentsSelectSql = (id, variant) => {
   return sql;
 };
 
+const getTicketsController = async (req, res, variant) => {
+  const id = req.params.id;
+
+  const sql = buildTicketSelectSql(id, variant);
+  const { isSuccess, result, message } = await read(sql);
+
+  if (!isSuccess) return res.status(400).json(message);
+
+  res.status(200).json(result);
+};
+
+const postTicketController = async (req, res) => {
+  // Validate request
+
+  //Access data
+  const sql = buildTicketInsertSql(req.body);
+  const { isSuccess, result, message } = await createTickets(sql, req.body);
+
+  if (!isSuccess) return res.status(404).json(message);
+  //Response to request
+  res.status(201).json(result);
+};
+
 const getUsersController = async (req, res, varient) => {
   const id = req.params.id; // Undefined in the case of /api/users endpoint
 
@@ -113,7 +223,7 @@ const getUsersController = async (req, res, varient) => {
   //Access data
   const sql = buildUsersSelectSql(id, varient);
   const { isSuccess, result, message } = await read(sql);
-  if (!isSuccess) return res.stats(404).json(message);
+  if (!isSuccess) return res.stats(400).json(message);
 
   //Response to request
   res.status(200).json(result);
@@ -121,13 +231,12 @@ const getUsersController = async (req, res, varient) => {
 
 const getAssignmentsController = async (req, res, varient) => {
   const id = req.params.id; // Undefined in the case of /api/assignments endpoint
-
   // Validate request
 
   //Access data
   const sql = buildAssigmentsSelectSql(id, varient);
   const { isSuccess, result, message } = await read(sql);
-  if (!isSuccess) return res.stats(404).json(message);
+  if (!isSuccess) return res.stats(400).json(message);
 
   //Response to request
   res.status(200).json(result);
@@ -161,6 +270,16 @@ app.get("/api/users/tradesperson", (req, res) =>
 app.get("/api/users/administrator", (req, res) =>
   getUsersController(req, res, "administrator")
 );
+
+// Tickets
+app.get("/api/tickets", (req, res) => getTicketsController(req, res, null));
+app.get("/api/tickets/:id", (req, res) => getTicketsController(req, res, null));
+app.get("/api/tickets/user/:id", (req, res) =>
+  getTicketsController(req, res, "user")
+);
+
+app.post("/api/tickets", postTicketController);
+
 // Start server --------------------------------------
 const PORT = process.env.PORT || 5001;
 app.listen(PORT, () => console.log(`Server started on port ${PORT}`));
