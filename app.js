@@ -69,6 +69,72 @@ const read = async (selectSql) => {
   }
 };
 
+const buildJobsSelectSql = (id, variant) => {
+  let sql = "";
+  let table =
+    "Jobs LEFT JOIN Tickets ON JobTicketID=TicketID LEFT JOIN JobTypes ON JobJobTypeID=JobTypeID";
+  const fields = [
+    "JobID",
+    "JobTitle",
+    "JobDescription",
+    "JobTicketID",
+    "JobJobTypeID",
+    "JobStatus",
+    "JobCreatedAt",
+    "TicketTitle AS JobTicketTitle",
+    "JobTypeName AS JobJobTypeName",
+  ];
+
+  switch (variant) {
+    default:
+      sql = `SELECT ${fields} FROM ${table}`;
+      if (id) sql += ` WHERE JobID=${id}`;
+  }
+  return sql;
+};
+
+const buildJobInsertSql = (record) => {
+  const table = `
+    Jobs
+  `;
+  const mutablefields = [
+    "JobID",
+    "JobTitle",
+    "JobDescription",
+    "JobTicketsID",
+    "JobJobTypeID",
+    "JobStatus",
+    "JobCreatedAt",
+  ];
+  return `INSERT INTO ${table}` + buildsSetFields(mutablefields);
+};
+
+// GET Jobs
+const getJobsController = async (req, res, variant) => {
+  const id = req.params.id;
+
+  const sql = buildJobsSelectSql(id, variant);
+  const { isSuccess, result, message } = await read(sql);
+
+  if (!isSuccess) return res.status(400).json(message);
+
+  res.status(200).json(result);
+};
+
+// POST Jobs
+const postJobController = async (req, res) => {
+  // Validate request ()
+
+  // Access data
+  const sql = buildJobInsertSql(req.body);
+  const { isSuccess, result, message } = await createTickets(sql, req.body);
+
+  if (!isSuccess) return res.status(404).json(message);
+
+  // Response to request
+  res.status(201).json(result);
+};
+
 const buildUsersSelectSql = (id, variant) => {
   let sql = "";
   let table = "Users LEFT JOIN UserTypes ON UserUserTypeID=UserTypeID";
@@ -279,6 +345,12 @@ app.get("/api/tickets/user/:id", (req, res) =>
 );
 
 app.post("/api/tickets", postTicketController);
+
+// Jobs
+app.get("/api/jobs", (req, res) => getJobsController(req, res, null));
+app.get("/api/jobs/:id", (req, res) => getJobsController(req, res, null));
+
+app.post("/api/jobs", postJobController);
 
 // Start server --------------------------------------
 const PORT = process.env.PORT || 5001;
