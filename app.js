@@ -50,6 +50,23 @@ const createTickets = async (sql, record) => {
   }
 };
 
+const createAssignments = async (sql, record) => {
+  try {
+    const [status] = await database.query(sql, record);
+    const recoverSql = buildAssignmentSelectSql(status.insertId, null);
+    const { isSuccess, result, message } = await read(recoverSql);
+    return isSuccess
+      ? { isSuccess: true, result, message: "Record successfully recovered" }
+      : {
+          isSuccess: false,
+          result: null,
+          message: `Failed to recover: ${message}`,
+        };
+  } catch (error) {
+    return { isSuccess: false, result: null, message: error.message };
+  }
+};
+
 const read = async (selectSql) => {
   try {
     const [result] = await database.query(selectSql);
@@ -127,7 +144,7 @@ const postJobController = async (req, res) => {
 
   // Access data
   const sql = buildJobInsertSql(req.body);
-  const { isSuccess, result, message } = await createTickets(sql, req.body);
+  const { isSuccess, result, message } = await createJobs(sql, req.body);
 
   if (!isSuccess) return res.status(404).json(message);
 
@@ -189,7 +206,7 @@ const buildTicketInsertSql = (record) => {
     "TicketID",
     "TicketTitle",
     "TicketDescription",
-    "OfficeLocationID",
+    "TicketOfficeLocationID",
     "RequestedByUserID",
     "CreatedAt",
   ];
@@ -201,15 +218,15 @@ const buildTicketSelectSql = (id, variant) => {
   const table = `
     Tickets
     LEFT JOIN Users ON Tickets.RequestedByUserID = Users.UserID
-    LEFT JOIN Offices ON Tickets.OfficeLocationID = Offices.OfficeID
+    LEFT JOIN Offices ON Tickets.TicketOfficeLocationID = Offices.OfficeID
   `;
 
   const fields = [
     "TicketID",
     "TicketTitle",
     "TicketDescription",
-    "OfficeLocationID",
-    "RequestedByUserID",
+    "TicketOfficeLocationID",
+    "TicketRequestedByUserID",
     `CONCAT(Users.UserFirstName, " ", Users.UserMiddleName, " ", Users.UserLastName)
       AS RequestedByUserName`,
     "Offices.OfficeName AS TicketOfficeName",
@@ -232,14 +249,14 @@ const buildTicketSelectSql = (id, variant) => {
   return sql;
 };
 
-const buildAssigmentsSelectSql = (id, variant) => {
+const buildAssignmentSelectSql = (id, variant) => {
   let sql = "";
   let table =
     "Assignments LEFT JOIN Users ON Assignments.AssignmentUserID=Users.UserID LEFT JOIN Jobs ON Assignments.AssignmentJobID=Jobs.JobID";
   const fields = [
     "AssignmentID",
     "AssignmentJobID",
-    "AssignedAt",
+    "AssignmentDateCreated",
     "AssignmentUserID",
     "AssignmentStatus",
     'CONCAT(UserFirstName," ",UserMiddleName," ",UserLastName) AS AssignmentUserName',
@@ -256,6 +273,20 @@ const buildAssigmentsSelectSql = (id, variant) => {
       if (id) sql += ` WHERE AssignmentID=${id}`;
   }
   return sql;
+};
+
+const buildAssignmentInsertSql = (record) => {
+  const table = `
+    Assignments
+  `;
+  const mutablefields = [
+    "AssignmentID",
+    "AssignmentJobID",
+    "AssignmentDateCreated",
+    "AssignmentUserID",
+    "AssignmentStatus",
+  ];
+  return `INSERT INTO ${table}` + buildsSetFields(mutablefields);
 };
 
 const getTicketsController = async (req, res, variant) => {
@@ -281,31 +312,45 @@ const postTicketController = async (req, res) => {
   res.status(201).json(result);
 };
 
-const getUsersController = async (req, res, varient) => {
+const getUsersController = async (req, res, variant) => {
   const id = req.params.id; // Undefined in the case of /api/users endpoint
 
   // Validate request
 
   //Access data
-  const sql = buildUsersSelectSql(id, varient);
+  const sql = buildUsersSelectSql(id, variant);
   const { isSuccess, result, message } = await read(sql);
-  if (!isSuccess) return res.stats(400).json(message);
+  if (!isSuccess) return res.status(400).json(message);
 
   //Response to request
   res.status(200).json(result);
 };
 
-const getAssignmentsController = async (req, res, varient) => {
+const getAssignmentsController = async (req, res, variant) => {
   const id = req.params.id; // Undefined in the case of /api/assignments endpoint
   // Validate request
 
   //Access data
-  const sql = buildAssigmentsSelectSql(id, varient);
+  const sql = buildAssignmentSelectSql(id, variant);
   const { isSuccess, result, message } = await read(sql);
-  if (!isSuccess) return res.stats(400).json(message);
+  if (!isSuccess) return res.status(400).json(message);
 
   //Response to request
   res.status(200).json(result);
+};
+
+const postAssignmentController = async (req, res) => {
+  const record = {
+    ...req.body,
+    AssignmentDateCreated: new Date(),
+  };
+
+  const sql = buildAssignmentInsertSql(record);
+  const { isSuccess, result, message } = await createAssignments(sql, record);
+
+  if (!isSuccess) return res.status(500).json({ message });
+
+  res.status(201).json(result);
 };
 
 // Endpoints -----------------------------------------
@@ -321,9 +366,11 @@ app.get("/api/assignments/user/:id", (req, res) =>
   getAssignmentsController(req, res, "user")
 );
 
+app.post("/api/assignments", postAssignmentController);
+
 //Users
 app.get("/api/users", (req, res) => getUsersController(req, res, null));
-app.get("/api/users/:id", (req, res) => getUsersController(req, res, null));
+
 app.get("/api/users/client", (req, res) =>
   getUsersController(req, res, "client")
 );
@@ -337,6 +384,7 @@ app.get("/api/users/administrator", (req, res) =>
   getUsersController(req, res, "administrator")
 );
 
+app.get("/api/users/:id", (req, res) => getUsersController(req, res, null));
 // Tickets
 app.get("/api/tickets", (req, res) => getTicketsController(req, res, null));
 app.get("/api/tickets/:id", (req, res) => getTicketsController(req, res, null));
