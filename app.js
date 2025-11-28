@@ -2,7 +2,6 @@
 import express from "express";
 import cors from "cors";
 import database from "./database.js";
-
 // Configure express app -----------------------------
 const app = new express();
 
@@ -23,6 +22,25 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
 // Controllers ---------------------------------------
+const read = async (selectSql) => {
+  try {
+    const [result] = await database.query(selectSql);
+    return result.length === 0
+      ? { isSuccess: false, result: null, message: "No record(s) found" }
+      : {
+          isSuccess: true,
+          result: result,
+          message: "Record(s) successfully recovered ",
+        };
+  } catch (error) {
+    return {
+      isSuccess: false,
+      result: null,
+      message: `Failed to execude query: ${error.message}`,
+    };
+  }
+};
+
 const createTickets = async (sql, record) => {
   try {
     const status = await database.query(sql, record);
@@ -64,25 +82,6 @@ const createAssignments = async (sql, record) => {
         };
   } catch (error) {
     return { isSuccess: false, result: null, message: error.message };
-  }
-};
-
-const read = async (selectSql) => {
-  try {
-    const [result] = await database.query(selectSql);
-    return result.length === 0
-      ? { isSuccess: false, result: null, message: "No record(s) found" }
-      : {
-          isSuccess: true,
-          result: result,
-          message: "Record(s) successfully recovered ",
-        };
-  } catch (error) {
-    return {
-      isSuccess: false,
-      result: null,
-      message: `Failed to execude query: ${error.message}`,
-    };
   }
 };
 
@@ -203,12 +202,11 @@ const buildTicketInsertSql = (record) => {
     Tickets
   `;
   const mutablefields = [
-    "TicketID",
     "TicketTitle",
     "TicketDescription",
     "TicketOfficeLocationID",
-    "RequestedByUserID",
-    "CreatedAt",
+    "TicketRequestedByUserID",
+    "TicketCreatedAt",
   ];
   return `INSERT INTO ${table}` + buildsSetFields(mutablefields);
 };
@@ -217,7 +215,7 @@ const buildTicketSelectSql = (id, variant) => {
 
   const table = `
     Tickets
-    LEFT JOIN Users ON Tickets.RequestedByUserID = Users.UserID
+    LEFT JOIN Users ON Tickets.TicketRequestedByUserID = Users.UserID
     LEFT JOIN Offices ON Tickets.TicketOfficeLocationID = Offices.OfficeID
   `;
 
@@ -228,19 +226,19 @@ const buildTicketSelectSql = (id, variant) => {
     "TicketOfficeLocationID",
     "TicketRequestedByUserID",
     `CONCAT(Users.UserFirstName, " ", Users.UserMiddleName, " ", Users.UserLastName)
-      AS RequestedByUserName`,
+      AS TicketRequestedByUserName`,
     "Offices.OfficeName AS TicketOfficeName",
     "Offices.AddressLine1 AS TicketOfficeAddress1",
     "Offices.AddressLine2 AS TicketOfficeAddress2",
     "Offices.City AS TicketOfficeCity",
     "Offices.County AS TicketOfficeCounty",
     "Offices.Postcode AS TicketOfficePostcode",
-    "CreatedAt",
+    "TicketCreatedAt",
   ];
 
   switch (variant) {
     case "user":
-      sql = `SELECT ${fields} FROM ${table} WHERE RequestedByUserID = ${id}`;
+      sql = `SELECT ${fields} FROM ${table} WHERE TicketRequestedByUserID = ${id}`;
       break;
     default:
       sql = `SELECT ${fields} FROM ${table}`;
@@ -280,7 +278,6 @@ const buildAssignmentInsertSql = (record) => {
     Assignments
   `;
   const mutablefields = [
-    "AssignmentID",
     "AssignmentJobID",
     "AssignmentDateCreated",
     "AssignmentUserID",
@@ -362,7 +359,7 @@ app.get("/api/assignments", (req, res) =>
 app.get("/api/assignments/:id", (req, res) =>
   getAssignmentsController(req, res, null)
 );
-app.get("/api/assignments/user/:id", (req, res) =>
+app.get("/api/assignments/users/:id", (req, res) =>
   getAssignmentsController(req, res, "user")
 );
 
@@ -388,7 +385,7 @@ app.get("/api/users/:id", (req, res) => getUsersController(req, res, null));
 // Tickets
 app.get("/api/tickets", (req, res) => getTicketsController(req, res, null));
 app.get("/api/tickets/:id", (req, res) => getTicketsController(req, res, null));
-app.get("/api/tickets/user/:id", (req, res) =>
+app.get("/api/tickets/users/:id", (req, res) =>
   getTicketsController(req, res, "user")
 );
 
