@@ -41,11 +41,45 @@ const read = async (selectSql) => {
   }
 };
 
+const updateTickets = async (sql, id, record) => {
+  try {
+    const status = await database.query(sql, { ...record, TicketID: id });
+
+    if (status[0].affectedRows === 0)
+      return {
+        isSuccess: false,
+        result: null,
+        message: "Failed to update record: no rows affected",
+      };
+
+    const recoverRecordSql = buildTicketsSelectSql(id, null);
+    const { isSuccess, result, message } = await read(recoverRecordSql);
+
+    return isSuccess
+      ? {
+          isSuccess: true,
+          result: result,
+          message: "Record successfully recovered ",
+        }
+      : {
+          isSuccess: false,
+          result: null,
+          message: `Failed to recover the updated record: ${message}`,
+        };
+  } catch (error) {
+    return {
+      isSuccess: false,
+      result: null,
+      message: `Failed to execute query: ${error.message}`,
+    };
+  }
+};
+
 const createTickets = async (sql, record) => {
   try {
     const status = await database.query(sql, record);
 
-    const recoverRecordSql = buildTicketSelectSql(status[0].insertId, null);
+    const recoverRecordSql = buildTicketsSelectSql(status[0].insertId, null);
     const { isSuccess, result, message } = await read(recoverRecordSql);
 
     return isSuccess
@@ -122,7 +156,7 @@ const buildJobInsertSql = (record) => {
     "JobStatus",
     "JobCreatedAt",
   ];
-  return `INSERT INTO ${table}` + buildsSetFields(mutablefields);
+  return `INSERT INTO ${table}` + buildSetFields(mutablefields);
 };
 
 // GET Jobs
@@ -190,27 +224,77 @@ const buildUsersSelectSql = (id, variant) => {
   return sql;
 };
 
-const buildsSetFields = (fields) =>
+const buildSetFields = (fields) =>
   fields.reduce(
     (setSQL, field, index) =>
       setSQL + `${field}=:${field}` + (index < fields.length - 1 ? ", " : " "),
     " SET "
   );
 
-const buildTicketInsertSql = (record) => {
+const buildTicketsDeleteSql = () => {
+  let table = "Tickets";
+  return `DELETE FROM ${table} WHERE TicketID=:TicketID`;
+};
+
+const deleteTickets = async (sql, id) => {
+  try {
+    const status = await database.query(sql, { TicketID: id });
+
+    return status[0].affectedRows === 0
+      ? {
+          isSuccess: false,
+          result: null,
+          message: `Failed to delete record ${id}`,
+        }
+      : {
+          isSuccess: true,
+          result: null,
+          message: "Record successfully deleted",
+        };
+  } catch (error) {
+    return {
+      isSuccess: false,
+      result: null,
+      message: `Failed to execute query: ${error.message}`,
+    };
+  }
+};
+
+const buildTicketsUpdateSql = () => {
   const table = `
     Tickets
   `;
   const mutablefields = [
     "TicketTitle",
     "TicketDescription",
+    "TicketDueDate",
     "TicketOfficeLocationID",
     "TicketRequestedByUserID",
     "TicketCreatedAt",
   ];
-  return `INSERT INTO ${table}` + buildsSetFields(mutablefields);
+  return (
+    `UPDATE ${table} ` +
+    buildsSetFields(mutablefields) +
+    ` WHERE TicketID=:TicketID`
+  );
 };
-const buildTicketSelectSql = (id, variant) => {
+
+const buildTicketsInsertSql = () => {
+  const table = `
+    Tickets
+  `;
+  const mutablefields = [
+    "TicketTitle",
+    "TicketDescription",
+    "TicketDueDate",
+    "TicketOfficeLocationID",
+    "TicketRequestedByUserID",
+    "TicketCreatedAt",
+  ];
+  return `INSERT INTO ${table}` + buildSetFields(mutablefields);
+};
+
+const buildTicketsSelectSql = (id, variant) => {
   let sql = "";
 
   const table = `
@@ -223,6 +307,7 @@ const buildTicketSelectSql = (id, variant) => {
     "TicketID",
     "TicketTitle",
     "TicketDescription",
+    "TicketDueDate",
     "TicketOfficeLocationID",
     "TicketRequestedByUserID",
     `CONCAT(Users.UserFirstName, " ", Users.UserMiddleName, " ", Users.UserLastName)
@@ -283,13 +368,13 @@ const buildAssignmentInsertSql = (record) => {
     "AssignmentUserID",
     "AssignmentStatus",
   ];
-  return `INSERT INTO ${table}` + buildsSetFields(mutablefields);
+  return `INSERT INTO ${table}` + buildSetFields(mutablefields);
 };
 
 const getTicketsController = async (req, res, variant) => {
   const id = req.params.id;
 
-  const sql = buildTicketSelectSql(id, variant);
+  const sql = buildTicketsSelectSql(id, variant);
   const { isSuccess, result, message } = await read(sql);
 
   if (!isSuccess) return res.status(400).json(message);
@@ -297,16 +382,46 @@ const getTicketsController = async (req, res, variant) => {
   res.status(200).json(result);
 };
 
-const postTicketController = async (req, res) => {
+const postTicketsController = async (req, res) => {
   // Validate request
 
   //Access data
-  const sql = buildTicketInsertSql(req.body);
+  const sql = buildTicketsInsertSql();
   const { isSuccess, result, message } = await createTickets(sql, req.body);
 
   if (!isSuccess) return res.status(404).json(message);
   //Response to request
   res.status(201).json(result);
+};
+
+const putTicketsController = async (req, res) => {
+  // Validate request
+  const id = req.params.id;
+  const record = req.body;
+
+  //Access data
+  const sql = buildTicketsUpdateSql();
+  const { isSuccess, result, message } = await updateTickets(sql, id, record);
+  if (!isSuccess) return res.status(404).json(message);
+  //Response to request
+  res.status(201).json(result);
+};
+
+const deleteTicketsController = async (req, res) => {
+  // Validate request
+  const id = req.params.id;
+
+  // Access data
+  const sql = buildTicketsDeleteSql();
+  const {
+    isSuccess,
+    result,
+    message: accessorMessage,
+  } = await deleteTickets(sql, id);
+  if (!isSuccess) return res.status(400).json({ message: accessorMessage });
+
+  // Response to request
+  res.status(204).json({ message: accessorMessage });
 };
 
 const getUsersController = async (req, res, variant) => {
@@ -389,7 +504,11 @@ app.get("/api/tickets/users/:id", (req, res) =>
   getTicketsController(req, res, "user")
 );
 
-app.post("/api/tickets", postTicketController);
+app.post("/api/tickets", postTicketsController);
+
+app.put("/api/tickets/:id", putTicketsController);
+
+app.delete("/api/tickets/:id", deleteTicketsController);
 
 // Jobs
 app.get("/api/jobs", (req, res) => getJobsController(req, res, null));
