@@ -41,6 +41,51 @@ const read = async (selectSql) => {
   }
 };
 
+const createOffice = async (sql, record) => {
+  try {
+    const [status] = await database.query(sql, record);
+
+    const recoverSql = buildOfficesSelectSql(status.insertId, null);
+    const { isSuccess, result, message } = await read(recoverSql);
+
+    return isSuccess
+      ? { isSuccess: true, result, message: "Office successfully recovered" }
+      : { isSuccess: false, result: null, message };
+  } catch (error) {
+    return { isSuccess: false, result: null, message: error.message };
+  }
+};
+
+const updateOffice = async (sql, id, record) => {
+  try {
+    const [status] = await database.query(sql, { ...record, OfficeID: id });
+
+    if (status.affectedRows === 0)
+      return {
+        isSuccess: false,
+        result: null,
+        message: "Failed to update office: no rows affected",
+      };
+
+    const recoverSql = buildOfficesSelectSql(id, null);
+    return await read(recoverSql);
+  } catch (error) {
+    return { isSuccess: false, result: null, message: error.message };
+  }
+};
+
+const deleteOffice = async (sql, id) => {
+  try {
+    const [status] = await database.query(sql, { OfficeID: id });
+
+    return status.affectedRows === 0
+      ? { isSuccess: false, result: null, message: "Office not found" }
+      : { isSuccess: true, result: null, message: "Office deleted" };
+  } catch (error) {
+    return { isSuccess: false, result: null, message: error.message };
+  }
+};
+
 const updateTickets = async (sql, id, record) => {
   try {
     const status = await database.query(sql, { ...record, TicketID: id });
@@ -118,6 +163,72 @@ const createAssignments = async (sql, record) => {
     return { isSuccess: false, result: null, message: error.message };
   }
 };
+const buildOfficesSelectSql = (id, variant) => {
+  let sql = "";
+  const table = "Offices";
+  const fields = [
+    "OfficeID",
+    "OfficeName",
+    "AddressLine1",
+    "AddressLine2",
+    "City",
+    "County",
+    "Postcode",
+    "MaxOccupancy",
+    "IsActive",
+  ];
+
+  switch (variant) {
+    case "active":
+      sql = `SELECT ${fields} FROM ${table} WHERE IsActive = 1`;
+      break;
+    default:
+      sql = `SELECT ${fields} FROM ${table}`;
+      if (id) sql += ` WHERE OfficeID = ${id}`;
+  }
+
+  return sql;
+};
+
+const buildOfficesInsertSql = () => {
+  const table = "Offices";
+  const mutableFields = [
+    "OfficeName",
+    "AddressLine1",
+    "AddressLine2",
+    "City",
+    "County",
+    "Postcode",
+    "MaxOccupancy",
+    "IsActive",
+  ];
+
+  return `INSERT INTO ${table}` + buildSetFields(mutableFields);
+};
+
+const buildOfficesUpdateSql = () => {
+  const table = "Offices";
+  const mutableFields = [
+    "OfficeName",
+    "AddressLine1",
+    "AddressLine2",
+    "City",
+    "County",
+    "Postcode",
+    "MaxOccupancy",
+    "IsActive",
+  ];
+
+  return (
+    `UPDATE ${table}` +
+    buildSetFields(mutableFields) +
+    ` WHERE OfficeID = :OfficeID`
+  );
+};
+
+const buildOfficesDeleteSql = () => {
+  return `DELETE FROM Offices WHERE OfficeID = :OfficeID`;
+};
 
 const buildJobsSelectSql = (id, variant) => {
   let sql = "";
@@ -154,7 +265,6 @@ const buildJobInsertSql = (record) => {
     "JobTicketsID",
     "JobJobTypeID",
     "JobStatus",
-    "JobCreatedAt",
   ];
   return `INSERT INTO ${table}` + buildSetFields(mutablefields);
 };
@@ -270,11 +380,10 @@ const buildTicketsUpdateSql = () => {
     "TicketDueDate",
     "TicketOfficeLocationID",
     "TicketRequestedByUserID",
-    "TicketCreatedAt",
   ];
   return (
     `UPDATE ${table} ` +
-    buildsSetFields(mutablefields) +
+    buildSetFields(mutablefields) +
     ` WHERE TicketID=:TicketID`
   );
 };
@@ -289,7 +398,6 @@ const buildTicketsInsertSql = () => {
     "TicketDueDate",
     "TicketOfficeLocationID",
     "TicketRequestedByUserID",
-    "TicketCreatedAt",
   ];
   return `INSERT INTO ${table}` + buildSetFields(mutablefields);
 };
@@ -339,9 +447,9 @@ const buildAssignmentSelectSql = (id, variant) => {
   const fields = [
     "AssignmentID",
     "AssignmentJobID",
-    "AssignmentDateCreated",
     "AssignmentUserID",
     "AssignmentStatus",
+    "AssignmentDateCreated",
     'CONCAT(UserFirstName," ",UserMiddleName," ",UserLastName) AS AssignmentUserName',
     "Jobs.JobTitle AS AssignmentJobTitle",
     "Jobs.JobDescription AS AssignmentJobDescription",
@@ -364,7 +472,6 @@ const buildAssignmentInsertSql = (record) => {
   `;
   const mutablefields = [
     "AssignmentJobID",
-    "AssignmentDateCreated",
     "AssignmentUserID",
     "AssignmentStatus",
   ];
@@ -454,7 +561,6 @@ const getAssignmentsController = async (req, res, variant) => {
 const postAssignmentController = async (req, res) => {
   const record = {
     ...req.body,
-    AssignmentDateCreated: new Date(),
   };
 
   const sql = buildAssignmentInsertSql(record);
@@ -463,6 +569,44 @@ const postAssignmentController = async (req, res) => {
   if (!isSuccess) return res.status(500).json({ message });
 
   res.status(201).json(result);
+};
+
+const getOfficesController = async (req, res, variant) => {
+  const id = req.params.id;
+
+  const sql = buildOfficesSelectSql(id, variant);
+  const { isSuccess, result, message } = await read(sql);
+
+  if (!isSuccess) return res.status(400).json(message);
+  res.status(200).json(result);
+};
+
+const postOfficesController = async (req, res) => {
+  const sql = buildOfficesInsertSql();
+  const { isSuccess, result, message } = await createOffice(sql, req.body);
+
+  if (!isSuccess) return res.status(500).json({ message });
+  res.status(201).json(result);
+};
+
+const putOfficesController = async (req, res) => {
+  const id = req.params.id;
+  const sql = buildOfficesUpdateSql();
+
+  const { isSuccess, result, message } = await updateOffice(sql, id, req.body);
+
+  if (!isSuccess) return res.status(404).json({ message });
+  res.status(200).json(result);
+};
+
+const deleteOfficesController = async (req, res) => {
+  const id = req.params.id;
+  const sql = buildOfficesDeleteSql();
+
+  const { isSuccess, message } = await deleteOffice(sql, id);
+
+  if (!isSuccess) return res.status(400).json({ message });
+  res.status(204).json();
 };
 
 // Endpoints -----------------------------------------
@@ -515,6 +659,21 @@ app.get("/api/jobs", (req, res) => getJobsController(req, res, null));
 app.get("/api/jobs/:id", (req, res) => getJobsController(req, res, null));
 
 app.post("/api/jobs", postJobController);
+
+// Offices
+app.get("/api/offices", (req, res) => getOfficesController(req, res, null));
+
+app.get("/api/offices/:id", (req, res) => getOfficesController(req, res, null));
+
+app.get("/api/offices/active", (req, res) =>
+  getOfficesController(req, res, "active")
+);
+
+app.post("/api/offices", postOfficesController);
+
+app.put("/api/offices/:id", putOfficesController);
+
+app.delete("/api/offices/:id", deleteOfficesController);
 
 // Start server --------------------------------------
 const PORT = process.env.PORT || 5001;
