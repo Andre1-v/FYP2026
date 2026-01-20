@@ -1,101 +1,37 @@
 import { Router } from "express";
 import database from "../database.js";
+import Model from "../models/Model.js";
+import usersModel from "../models/users-model.js";
+import Accessor from "../accessor/Accessor.js";
+import Controller from "../controller/Controller.js";
 
 const router = Router();
 
 // Query builders --------------------------------
-
-const buildSetFields = (fields) =>
-  fields.reduce(
-    (setSQL, field, index) =>
-      setSQL + `${field}=:${field}` + (index === fields.length - 1 ? "" : ", "),
-    "SET "
-  );
-
-const buildUsersReadQuery = (id, variant) => {
-  let table = "Users LEFT JOIN UserTypes ON UserUserTypeID=UserTypeID";
-  let fields = [
-    "UserID",
-    "UserFirstName",
-    "UserMiddleName",
-    "UserLastName",
-    'CONCAT(UserFirstName," ",UserMiddleName," ",UserLastName) AS FullName',
-    "UserEmail",
-    "UserPassword",
-    "UserUserTypeID",
-    "UserTypeName AS UserUserTypeName",
-  ];
-  let sql = "";
-
-  const CLIENT = 1;
-  const DISPATCHER = 2;
-  const TRADESPERSON = 3;
-  const ADMINISTRATOR = 4;
-
-  switch (variant) {
-    case "client":
-      sql = `SELECT ${fields} FROM ${table} WHERE UserTypeID=${CLIENT}`;
-      break;
-    case "dispatcher":
-      sql = `SELECT ${fields} FROM ${table} WHERE UserTypeID=${DISPATCHER}`;
-      break;
-    case "tradesperson":
-      sql = `SELECT ${fields} FROM ${table} WHERE UserTypeID=${TRADESPERSON}`;
-      break;
-    case "administrator":
-      sql = `SELECT ${fields} FROM ${table} WHERE UserTypeID=${ADMINISTRATOR}`;
-      break;
-    default:
-      sql = `SELECT ${fields} FROM ${table}`;
-      if (id) sql += ` WHERE UserID=:ID`;
-  }
-  return { sql, data: { ID: id } };
-};
+const model = new Model(usersModel);
 
 // Data accessors --------------------------------
 
-const read = async (readQuery) => {
-  try {
-    const [result] = await database.query(readQuery.sql, readQuery.data);
-    return result.length === 0
-      ? { isSuccess: false, result: null, message: "No record(s) found" }
-      : {
-          isSuccess: true,
-          result: result,
-          message: "Record(s) successfully recovered",
-        };
-  } catch (error) {
-    return {
-      isSuccess: false,
-      result: null,
-      message: `Failed to execute query: ${error.message}`,
-    };
-  }
-};
-
+const accessor = new Accessor(model, database);
 // Controllers -----------------------------------
 
-const getUsersController = async (req, res, variant) => {
-  const id = req.params.id;
-  const query = buildUsersReadQuery(id, variant);
-  const { isSuccess, result, message: accessorMessage } = await read(query);
-  if (!isSuccess) return res.status(404).json({ message: accessorMessage });
-  res.status(200).json(result);
-};
+const controller = new Controller(accessor);
 
 // Endpoints -------------------------------------
 
-router.get("/", (req, res) => getUsersController(req, res, null));
-router.get("/client", (req, res) => getUsersController(req, res, "client"));
-router.get("/dispatcher", (req, res) =>
-  getUsersController(req, res, "dispatcher")
-);
+router.get("/", (req, res) => controller.get(req, res, null));
+router.get("/client", (req, res) => controller.get(req, res, "client"));
+router.get("/dispatcher", (req, res) => controller.get(req, res, "dispatcher"));
 router.get("/tradesperson", (req, res) =>
-  getUsersController(req, res, "tradesperson")
+  controller.get(req, res, "tradesperson")
 );
 router.get("/administrator", (req, res) =>
-  getUsersController(req, res, "administrator")
+  controller.get(req, res, "administrator")
 );
-router.get("/:id", (req, res) => getUsersController(req, res, null));
+router.get("/:id", (req, res) => controller.get(req, res, null));
+
+router.post("/", controller.post);
+router.put("/:id", controller.put);
+router.delete("/:id", controller.delete);
 
 export default router;
