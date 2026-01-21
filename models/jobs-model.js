@@ -3,6 +3,7 @@ const model = {};
 model.table = "Jobs";
 model.mutableFields = [
   "JobTitle",
+  "JobDueDateTime",
   "JobDescription",
   "JobTicketID",
   "JobJobTypeID",
