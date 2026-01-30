@@ -21,9 +21,12 @@ const controller = new Controller(accessor);
 
 // Endpoints -------------------------------------
 
-router.get("/", (req, res) => controller.get(req, res, null));
-router.get("/:id", (req, res) => controller.get(req, res, null));
+router.get("/", (req, res) => {
+  const variant = req.query.status === "open" ? "open" : null;
+  controller.get(req, res, variant);
+});
 router.get("/users/:id", (req, res) => controller.get(req, res, "user"));
+router.get("/:id", (req, res) => controller.get(req, res, null));
 router.post("/", controller.post);
 router.put("/:id", controller.put);
 router.delete("/:id", controller.delete);

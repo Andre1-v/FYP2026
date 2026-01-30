@@ -17,6 +17,8 @@ model.buildReadQuery = (id, variant) => {
     'CONCAT(UserFirstName," ",UserMiddleName," ",UserLastName) AS AssignmentUserName',
     "Jobs.JobTitle AS AssignmentJobTitle",
     "Jobs.JobDescription AS AssignmentJobDescription",
+    "Jobs.JobDueDateTime AS AssignmentJobDueDateTime",
+    "Jobs.JobStatus AS AssignmentJobStatus",
     "AssignmentDateCreated",
   ];
   let sql = "";

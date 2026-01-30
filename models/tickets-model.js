@@ -4,6 +4,7 @@ model.table = "Tickets";
 model.mutableFields = [
   "TicketTitle",
   "TicketDescription",
+  "TicketStatus",
   "TicketDueDate",
   "TicketOfficeLocationID",
   "TicketRequestedByUserID",
@@ -23,12 +24,17 @@ model.buildReadQuery = (id, variant) => {
     "Offices.County AS TicketOfficeCounty",
     "Offices.Postcode AS TicketOfficePostcode",
     "TicketCreatedAt",
+    "TicketStatus",
   ];
   let sql = "";
 
   switch (variant) {
     case "user":
       sql = `SELECT ${resolvedFields} FROM ${resolvedTable} WHERE TicketRequestedByUserID=:ID`;
+      break;
+    case "open":
+      const tableWithJobs = `Tickets LEFT JOIN Jobs ON Tickets.TicketID = Jobs.JobTicketID LEFT JOIN Users ON Tickets.TicketRequestedByUserID = Users.UserID LEFT JOIN Offices ON Tickets.TicketOfficeLocationID = Offices.OfficeID`;
+      sql = `SELECT ${resolvedFields} FROM ${tableWithJobs} WHERE Jobs.JobID IS NULL AND Tickets.TicketStatus='Open' ORDER BY Tickets.TicketDueDate ASC`;
       break;
     default:
       sql = `SELECT ${resolvedFields} FROM ${resolvedTable}`;
