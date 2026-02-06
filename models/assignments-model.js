@@ -4,21 +4,22 @@ model.table = "Assignments";
 model.mutableFields = [
   "AssignmentJobID",
   "AssignmentUserID",
-  "AssignmentStatus",
+  "AssignmentAssignmentStatusID",
 ];
 model.idField = "AssignmentID";
 
 model.buildReadQuery = (id, variant) => {
   const resolvedTable =
-    "Assignments LEFT JOIN Users ON Assignments.AssignmentUserID=Users.UserID LEFT JOIN Jobs ON Assignments.AssignmentJobID=Jobs.JobID";
+    "Assignments LEFT JOIN Users ON Assignments.AssignmentUserID=Users.UserID LEFT JOIN Jobs ON Assignments.AssignmentJobID=Jobs.JobID LEFT JOIN AssignmentStatuses ON Assignments.AssignmentAssignmentStatusID = AssignmentStatuses.AssignmentStatusID LEFT JOIN Statuses ON Jobs.JobStatusID = Statuses.StatusID";
   const resolvedFields = [
     model.idField,
     ...model.mutableFields,
+    "AssignmentStatuses.AssignmentStatusName AS AssignmentStatus",
     'CONCAT(UserFirstName," ",UserMiddleName," ",UserLastName) AS AssignmentUserName',
     "Jobs.JobTitle AS AssignmentJobTitle",
     "Jobs.JobDescription AS AssignmentJobDescription",
     "Jobs.JobDueDateTime AS AssignmentJobDueDateTime",
-    "Jobs.JobStatus AS AssignmentJobStatus",
+    "Statuses.StatusName AS AssignmentJobStatus",
     "AssignmentDateCreated",
   ];
   let sql = "";
